@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 
 from aiohttp import web
@@ -36,27 +35,28 @@ async def start_web():
 
 def create_dispatcher(settings: Settings) -> Dispatcher:
     dispatcher = Dispatcher()
-    # include your routers exactly as before
     dispatcher.include_router(callbacks_router)
     dispatcher.include_router(commands_router)
     dispatcher.include_router(intake_router)
     dispatcher.include_router(thumbnails_router)
+    dispatcher.workflow_data.update(
+        settings=settings,
+        cooldown=CooldownManager(timeout_seconds=settings.process_max_timeout),
+        request_store=RequestStore(settings.requests_dir, settings.work_dir),
+        thumbnail_store=ThumbnailStore(settings.thumbnails_dir),
+    )
     return dispatcher
 
 
 async def run():
     setup_logging()
-    settings = Settings()
+    settings = Settings.from_env()
     bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dispatcher = create_dispatcher(settings)
-
-    # Start fake HTTP server so Render detects an open port
     await start_web()
-
-    # Start bot polling normally
     await dispatcher.start_polling(bot)
 
 
