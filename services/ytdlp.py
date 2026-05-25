@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -69,6 +70,11 @@ def _ext_from_url(url: str) -> str | None:
     return suffix.lstrip(".") if suffix else None
 
 
+def _safe_filename(url: str, ext: str | None) -> str:
+    short_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+    return f"{short_hash}.{ext}" if ext else short_hash
+
+
 def _option_id(prefix: str, index: int) -> str:
     return f"{prefix}{index}"
 
@@ -78,7 +84,7 @@ async def probe_url(parsed_input: ParsedInput, settings: Settings) -> dict:
     command.extend(["--allow-dynamic-mpd", "--dump-single-json", parsed_input.source_url])
     logger.info("Probing source with yt-dlp | source=%s", safe_url_label(parsed_input.source_url))
     stdout, _ = await _run_command(command)
-    if "\\n" in stdout:
+    if "\\\\n" in stdout:
         stdout = stdout.splitlines()[0]
     payload = json.loads(stdout)
     logger.info(
@@ -226,18 +232,15 @@ async def download_quick_youtube(
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     command = _command_base(parsed_input, settings)
-    output_template = str(work_dir / "%(id)s.%(ext)s")  # FIXED: was %(title)s [%(id)s].%(ext)s
+    output_template = str(work_dir / "%(id)s.%(ext)s")
 
     if option.option_id == "quick_audio":
         command.extend(
             [
-                "-f",
-                "bestaudio",
+                "-f", "bestaudio",
                 "--extract-audio",
-                "--audio-format",
-                "mp3",
-                "-o",
-                output_template,
+                "--audio-format", "mp3",
+                "-o", output_template,
                 parsed_input.source_url,
             ]
         )
@@ -245,10 +248,8 @@ async def download_quick_youtube(
     else:
         command.extend(
             [
-                "-f",
-                "best[ext=mp4]/best",
-                "-o",
-                output_template,
+                "-f", "best[ext=mp4]/best",
+                "-o", output_template,
                 parsed_input.source_url,
             ]
         )
@@ -286,18 +287,15 @@ async def download_selected_format(
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     command = _command_base(parsed_input, settings)
-    output_template = str(work_dir / "%(id)s.%(ext)s")  # FIXED: was %(title)s [%(id)s].%(ext)s
+    output_template = str(work_dir / "%(id)s.%(ext)s")
 
     if option.mode == "ytdlp_audio":
         command.extend(
             [
                 "--extract-audio",
-                "--audio-format",
-                option.file_ext or "mp3",
-                "--audio-quality",
-                option.audio_quality or "128k",
-                "-o",
-                output_template,
+                "--audio-format", option.file_ext or "mp3",
+                "--audio-quality", option.audio_quality or "128k",
+                "-o", output_template,
                 parsed_input.source_url,
             ]
         )
@@ -308,11 +306,9 @@ async def download_selected_format(
             format_selector = f"{format_selector}+bestaudio"
         command.extend(
             [
-                "-f",
-                format_selector,
+                "-f", format_selector,
                 "--embed-subs",
-                "-o",
-                output_template,
+                "-o", output_template,
                 parsed_input.source_url,
             ]
         )
@@ -339,4 +335,48 @@ async def download_selected_format(
         file_name=file_path.name,
         send_type=send_type,
         caption=_caption_from_info(info, file_path.stem),
+    )
+
+
+async def download_direct(
+    parsed_input: ParsedInput,
+    option: DownloadOption,
+    settings: Settings,
+    work_dir: Path,
+) -> DownloadArtifact:
+    work_dir = work_dir.resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+    command = _command_base(parsed_input, settings)
+
+    ext = option.file_ext or _ext_from_url(parsed_input.source_url) or "mp4"
+    safe_name = _safe_filename(parsed_input.source_url, ext)
+    output_template = str(work_dir / safe_name)
+
+    command.extend(
+        [
+            "--no-playlist",
+            "-o", output_template,
+            parsed_input.source_url,
+        ]
+    )
+
+    logger.info(
+        "Starting direct download | source=%s send_type=%s work_dir=%s",
+        safe_url_label(parsed_input.source_url),
+        option.send_type,
+        work_dir,
+    )
+    await _run_command(command, cwd=work_dir)
+    file_path = _pick_downloaded_file(work_dir)
+    logger.info(
+        "Direct download complete | file=%s bytes=%s send_type=%s",
+        file_path.name,
+        file_path.stat().st_size,
+        option.send_type,
+    )
+    return DownloadArtifact(
+        path=file_path,
+        file_name=file_path.name,
+        send_type=option.send_type,
+        caption=file_path.stem,
     )
