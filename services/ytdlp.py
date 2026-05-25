@@ -78,7 +78,7 @@ async def probe_url(parsed_input: ParsedInput, settings: Settings) -> dict:
     command.extend(["--allow-dynamic-mpd", "--dump-single-json", parsed_input.source_url])
     logger.info("Probing source with yt-dlp | source=%s", safe_url_label(parsed_input.source_url))
     stdout, _ = await _run_command(command)
-    if "\n" in stdout:
+    if "\\n" in stdout:
         stdout = stdout.splitlines()[0]
     payload = json.loads(stdout)
     logger.info(
@@ -226,7 +226,7 @@ async def download_quick_youtube(
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     command = _command_base(parsed_input, settings)
-    output_template = str(work_dir / "%(title)s [%(id)s].%(ext)s")
+    output_template = str(work_dir / "%(id)s.%(ext)s")  # FIXED: was %(title)s [%(id)s].%(ext)s
 
     if option.option_id == "quick_audio":
         command.extend(
@@ -286,7 +286,7 @@ async def download_selected_format(
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     command = _command_base(parsed_input, settings)
-    output_template = str(work_dir / "%(title)s [%(id)s].%(ext)s")
+    output_template = str(work_dir / "%(id)s.%(ext)s")  # FIXED: was %(title)s [%(id)s].%(ext)s
 
     if option.mode == "ytdlp_audio":
         command.extend(
