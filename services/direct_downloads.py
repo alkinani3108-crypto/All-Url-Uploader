@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import mimetypes
 import time
@@ -21,7 +22,10 @@ logger = logging.getLogger(__name__)
 def _filename_from_url(url: str) -> str:
     parsed = urlparse(url)
     name = Path(parsed.path).name
-    return name or "downloaded-file"
+    # If name is too long or empty, use a short hash instead
+    if not name or len(name) > 64:
+        name = hashlib.md5(url.encode()).hexdigest()[:12]
+    return name
 
 
 def _normalize_file_name(file_name: str, ext: str | None) -> str:
@@ -29,7 +33,12 @@ def _normalize_file_name(file_name: str, ext: str | None) -> str:
         return file_name
     if file_name.lower().endswith(f".{ext.lower()}"):
         return file_name
-    return f"{file_name}.{ext}"
+    # Strip any existing extension before adding the correct one
+    stem = Path(file_name).stem
+    # If stem is still too long, truncate it
+    if len(stem) > 64:
+        stem = hashlib.md5(stem.encode()).hexdigest()[:12]
+    return f"{stem}.{ext}"
 
 
 def _progress_milestone(downloaded: int, total: int) -> int | None:
