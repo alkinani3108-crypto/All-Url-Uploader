@@ -24,6 +24,24 @@ router = Router(name="intake")
 logger = logging.getLogger(__name__)
 
 
+def _is_direct_download_url(url: str) -> bool:
+    direct_hosts = (
+        "backblazeb2.com",
+        "s3.amazonaws.com",
+        "storage.googleapis.com",
+        "blob.core.windows.net",
+        "r2.cloudflarestorage.com",
+    )
+    # Also catch signed S3-style URLs by query params
+    direct_params = ("X-Amz-Signature", "X-Goog-Signature", "se=", "sig=")
+    url_lower = url.lower()
+    if any(host in url_lower for host in direct_hosts):
+        return True
+    if any(param.lower() in url_lower for param in direct_params):
+        return True
+    return False
+
+
 @router.message(F.chat.type == "private", F.text)
 async def intake_message(
     message: Message,
@@ -59,6 +77,7 @@ async def intake_message(
     parsed = parse_user_input(raw_text, message.entities)
     status_message = await message.reply(text.PROCESSING)
 
+    # YouTube — quick mode
     if is_probable_youtube_url(parsed.source_url):
         token = request_store.create_token()
         stored = StoredRequest(
@@ -81,9 +100,34 @@ async def intake_message(
         )
         return
 
+    # Backblaze / S3 signed URLs — force direct download, skip yt-dlp probe entirely
+    if _is_direct_download_url(parsed.source_url):
+        options = build_direct_options(parsed, info=None)
+        token = request_store.create_token()
+        stored = StoredRequest(
+            token=token,
+            request_type="direct_download",
+            parsed_input=parsed,
+            options=options,
+            info={},
+        )
+        request_store.save(stored)
+        logger.info(
+            "Forced direct download | user=%s token=%s source=%s",
+            message.from_user.id,
+            token,
+            safe_url_label(parsed.source_url),
+        )
+        await status_message.edit_text(
+            text.FORMAT_SELECTION,
+            reply_markup=format_keyboard(token, stored.options),
+        )
+        return
+
+    # All other URLs — probe with yt-dlp
     try:
         info = await probe_url(parsed, settings)
-    except RuntimeError as exc:  # pragma: no cover - network/tool error path
+    except RuntimeError as exc:
         logger.warning(
             "yt-dlp probe failed | user=%s source=%s error=%s",
             message.from_user.id,
@@ -122,5 +166,5 @@ async def intake_message(
     )
     await status_message.edit_text(
         text.FORMAT_SELECTION,
-        reply_markup=format_keyboard(token, options),
+        reply_markup=format_keyboard(token, stored.options),
     )
