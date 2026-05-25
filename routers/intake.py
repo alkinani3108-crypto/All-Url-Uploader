@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 
 def _is_direct_download_url(url: str) -> bool:
+    # Normalize full-width Unicode ? (？ U+FF1F) to ASCII ? before checking.
+    # yt-dlp and Telegram sometimes substitute full-width characters in URLs.
+    url = url.replace("\uff1f", "?")
+
     direct_hosts = (
         "backblazeb2.com",
         "s3.amazonaws.com",
@@ -32,12 +36,11 @@ def _is_direct_download_url(url: str) -> bool:
         "blob.core.windows.net",
         "r2.cloudflarestorage.com",
     )
-    # Also catch signed S3-style URLs by query params
-    direct_params = ("X-Amz-Signature", "X-Goog-Signature", "se=", "sig=")
+    direct_params = ("x-amz-signature", "x-goog-signature", "se=", "sig=")
     url_lower = url.lower()
     if any(host in url_lower for host in direct_hosts):
         return True
-    if any(param.lower() in url_lower for param in direct_params):
+    if any(param in url_lower for param in direct_params):
         return True
     return False
 
