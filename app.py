@@ -6,6 +6,8 @@ import os
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 
 from config import Settings
@@ -51,8 +53,18 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
 async def run():
     setup_logging()
     settings = Settings.from_env()
+
+    # Use local Bot API server if configured, otherwise fall back to Telegram's servers
+    if settings.local_bot_api_url:
+        session = AiohttpSession(
+            api=TelegramAPIServer.from_base(settings.local_bot_api_url)
+        )
+    else:
+        session = AiohttpSession()
+
     bot = Bot(
         token=settings.bot_token,
+        session=session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dispatcher = create_dispatcher(settings)
