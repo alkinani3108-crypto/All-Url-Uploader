@@ -31,6 +31,7 @@ class Settings:
     chunk_size: int
     http_proxy: str
     process_max_timeout: int
+    local_bot_api_url: str | None   # ← new
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -58,6 +59,7 @@ class Settings:
             chunk_size=_parse_chunk_size(os.environ.get("CHUNK_SIZE")),
             http_proxy=os.environ.get("HTTP_PROXY", "").strip(),
             process_max_timeout=int(os.environ.get("PROCESS_MAX_TIMEOUT", "3700")),
+            local_bot_api_url=os.environ.get("LOCAL_BOT_API_URL", "").strip() or None,  # ← new
         )
 
     @property
