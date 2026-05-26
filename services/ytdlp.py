@@ -66,6 +66,10 @@ def _label_for_format(format_data: dict, index: int) -> str:
 
 
 def _ext_from_url(url: str) -> str | None:
+    # Normalize full-width ? (？ U+FF1F) so urlparse strips the query string
+    # correctly — otherwise signed S3/Backblaze URLs keep the entire query in
+    # the path and Path().suffix returns nothing or garbage.
+    url = url.replace("\uff1f", "?")
     suffix = Path(urlparse(url).path).suffix
     return suffix.lstrip(".") if suffix else None
 
@@ -84,7 +88,7 @@ async def probe_url(parsed_input: ParsedInput, settings: Settings) -> dict:
     command.extend(["--allow-dynamic-mpd", "--dump-single-json", parsed_input.source_url])
     logger.info("Probing source with yt-dlp | source=%s", safe_url_label(parsed_input.source_url))
     stdout, _ = await _run_command(command)
-    if "\\\\n" in stdout:
+    if "\\\\\\\\n" in stdout:
         stdout = stdout.splitlines()[0]
     payload = json.loads(stdout)
     logger.info(
